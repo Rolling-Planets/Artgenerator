@@ -18,7 +18,7 @@ const {
   description,
 
   // quarterNr, -> this is fro config, but not necessary, as we can write coordinates here directly
- 
+
 
   //Added metadata for solana
   collectionName,
@@ -26,7 +26,7 @@ const {
   seller_fee_basis_points,
   external_url,
   collection,
-  properties, 
+  properties,
 
   background,
   uniqueDnaTorrance,
@@ -89,9 +89,40 @@ const getElements = (path) => {
 };
 
 // I tried bringing this function here, Initially I had this one and x,y coordinates in config
-// const randomNumber = (min, max) =>  {
-//   return Math.floor(Math.random() * (max - min) + min);
-//     };
+const randomNumber = (min, max) => {
+  return Math.floor(Math.random() * (max - min) + min);
+};
+
+const getPosition = (name) => {
+  let pos = { x: 64, y: 64 };
+  if (name === "Background") {
+    pos = { x: 0, y: 0 }
+  }
+  if (name === "Nebulae") {
+    pos = { x: randomNumber(4, 15), y: randomNumber(4, 15) };
+  }
+
+  if (name === "Starfields") {
+    pos = { x: randomNumber(72, 78), y: randomNumber(4, 15) };
+  }
+
+  if (name === "Comets") {
+    pos = { x: randomNumber(72, 78), y: randomNumber(72, 78) };
+  }
+
+  if (name === "Planet") {
+    pos = { x: 40, y: 40 };
+  }
+
+  if (name === "Moon") {
+    pos = { x: randomNumber(4, 15), y: randomNumber(72, 78) };
+  }
+
+  if (name === "Rings") {
+    pos = { x: 32, y: 32 };
+  }
+  return pos;
+};
 
 const layersSetup = (layersOrder) => {
   const layers = layersOrder.map((layerObj, index) => ({
@@ -99,18 +130,7 @@ const layersSetup = (layersOrder) => {
     name: layerObj.name,
     elements: getElements(`${layersDir}/${layerObj.name}/`),
 
-
-    //  positioning of elements  | 
-    //For some reason this isn't working. 
-    //The numbers here are tested and work on hashlips, but here they don't
-
-    // position: index==0 ? { x: 0, y: 0 } 
-    // : index==1 ? { x: randomNumber(4,15), y: randomNumber(4,15) } 
-    // : index==2 ? { x: randomNumber(72,78) , y: randomNumber(4,15)} 
-    // : index==3 ? { x: randomNumber(72,78), y: randomNumber(72,78) }
-    // : index==4 ? { x: randomNumber(4,15), y: randomNumber(72,78) } 
-    // : index==6 ? { x: 56, y: 56} // good
-    // : { x: 64, y: 64 },  // good
+    position: getPosition(layerObj.name),
     // size: { width: format.width, height: format.height } -> please leave this coented out, because it will resize everything to 128x128 and it's messy
 
     blendMode:
@@ -146,12 +166,12 @@ const addMetadata = (_dna, _edition) => {
     //Added metadata for solana
     name: collectionName + " " + `#${_edition}`,
     symbol: symbol,
-  
+
     description: description,
 
     //Added metadata for solana
     seller_fee_basis_points: seller_fee_basis_points,
-    
+
     image: `${baseUri}image.png`,
 
     //Added metadata for solana
@@ -185,9 +205,9 @@ const loadLayerImg = async (_layer) => {
 const drawElement = (_renderObject) => {
   ctx.globalAlpha = _renderObject.layer.opacity;
   ctx.globalCompositeOperation = _renderObject.layer.blendMode;
-  // ctx.drawImage(_renderObject.loadedImage, _renderObject.layer.position.x, _renderObject.layer.position.y);
+  ctx.drawImage(_renderObject.loadedImage, _renderObject.layer.position.x, _renderObject.layer.position.y);
   // this above cannot read coordinates above
-  ctx.drawImage(_renderObject.loadedImage,0,0);
+  // ctx.drawImage(_renderObject.loadedImage,0,0);
 
   addAttributes(_renderObject);
 };
@@ -202,6 +222,7 @@ const constructLayerToDna = (_dna = [], _layers = []) => {
       blendMode: layer.blendMode,
       opacity: layer.opacity,
       selectedElement: selectedElement,
+      position: layer.position,
     };
   });
   return mappedDnaToLayers;
@@ -242,8 +263,8 @@ const saveMetaDataSingleFile = (_editionCount) => {
   let metadata = metadataList.find((meta) => meta.edition == _editionCount);
   debugLogs
     ? console.log(
-        `Writing metadata for ${_editionCount}: ${JSON.stringify(metadata)}`
-      )
+      `Writing metadata for ${_editionCount}: ${JSON.stringify(metadata)}`
+    )
     : null;
   fs.writeFileSync(
     `${buildDir}/json/${_editionCount}.json`,
