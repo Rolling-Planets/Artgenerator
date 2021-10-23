@@ -56,7 +56,9 @@ const background = {
   brightness: "0%",
 };
 
-const extraMetadata = {};
+const extraMetadata = {
+  creator = "The Big Bang"
+};
 
 const rarityDelimiter = "#";
 
@@ -88,8 +90,22 @@ const properties = {
   category: "png",
   creators: [
     {
-      "address": "Your Solana Address", // create wallet address
-      "share": 100
+      "__comment1__":" We will all put our Solana addressees here so we will all get 25% (we are 4) each from royalties",
+          
+      "address": "@Mashu0x Solana Address",
+      "share": 25
+    },
+      {
+      "address": "@Z1kos Solana Address",
+      "share": 25
+      },
+      {
+      "address": "@hotsauce Solana Address",
+      "share": 25
+    },
+    {
+      "address": "@ptisserand Solana Address",
+      "share": 25
     }
   ]
 };
