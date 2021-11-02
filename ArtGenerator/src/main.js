@@ -5,7 +5,7 @@ const isLocal = typeof process.pkg === "undefined";
 const basePath = isLocal ? process.cwd() : path.dirname(process.execPath);
 const fs = require("fs");
 const sha1 = require(path.join(basePath, "/node_modules/sha1"));
-const { createCanvas, loadImage } = require(path.join(
+const { createCanvas, loadImage, Image } = require(path.join(
   basePath,
   "/node_modules/canvas"
 ));
@@ -36,8 +36,16 @@ const {
   debugLogs,
   extraMetadata,
 } = require(path.join(basePath, "/src/config.js"));
+const gifFrames = require("gif-frames");
+const GIFEncoder = require("gif-encoder-2");
+
+const { count } = require("console");
+const { encode } = require("punycode");
+
 const canvas = createCanvas(format.width, format.height);
 const ctx = canvas.getContext("2d");
+
+
 var metadataList = [];
 var attributesList = [];
 var dnaList = [];
@@ -159,7 +167,7 @@ const drawBackground = () => {
   ctx.fillRect(0, 0, format.width, format.height);
 };
 
-const addMetadata = (_dna, _edition) => {
+const addMetadata = (_dna, _edition, isGif = false) => {
   let dateTime = Date.now();
   let tempMetadata = {
 
@@ -172,7 +180,7 @@ const addMetadata = (_dna, _edition) => {
     //Added metadata for solana
     seller_fee_basis_points: seller_fee_basis_points,
 
-    image: `${baseUri}image.png`,
+    image: isGif ? `${baseUri}image.gif` : `${baseUri}image.png`,
 
     //Added metadata for solana
     external_url: external_url,
@@ -195,6 +203,36 @@ const addAttributes = (_element) => {
   });
 };
 
+function stream2buffer(stream) {
+
+  return new Promise((resolve, reject) => {
+
+    const _buf = [];
+
+    stream.on("data", (chunk) => _buf.push(chunk));
+    stream.on("end", () => resolve(Buffer.concat(_buf)));
+    stream.on("error", (err) => reject(err));
+
+  });
+}
+
+const loadLayerFrame = async (_layer, idx) => {
+  return new Promise(async (resolve) => {
+    let _filename = `${_layer.selectedElement.path}`
+    if (!isGif(_filename)) {
+      const image = await loadImage(`${_layer.selectedElement.path}`);
+      resolve({ layer: _layer, loadedImage: image });
+    } else {
+      idx = idx % _layer.nbFrames;
+      let frameData = await gifFrames({ url: _filename, frames: idx, outputType: 'png' });
+      let _stream = frameData[0].getImage();
+      const image = new Image;
+      image.src = await stream2buffer(_stream);
+      resolve({ layer: _layer, loadedImage: image });
+    }
+  });
+};
+
 const loadLayerImg = async (_layer) => {
   return new Promise(async (resolve) => {
     const image = await loadImage(`${_layer.selectedElement.path}`);
@@ -206,23 +244,37 @@ const drawElement = (_renderObject) => {
   ctx.globalAlpha = _renderObject.layer.opacity;
   ctx.globalCompositeOperation = _renderObject.layer.blendMode;
   ctx.drawImage(_renderObject.loadedImage, _renderObject.layer.position.x, _renderObject.layer.position.y);
-  // this above cannot read coordinates above
-  // ctx.drawImage(_renderObject.loadedImage,0,0);
 
   addAttributes(_renderObject);
 };
 
-const constructLayerToDna = (_dna = [], _layers = []) => {
-  let mappedDnaToLayers = _layers.map((layer, index) => {
+const isGif = (_filename) => {
+  let extension = _filename.replace(/^.*\./, "");
+  return extension === "gif";
+}
+
+const getNumberOfFrames = async (_filename) => {
+  if (!isGif(_filename)) {
+    return 1;
+  }
+  // we have a gif so we need to count number of frames
+  let results = await gifFrames({ url: _filename, frames: 'all' });
+  return results.length;
+}
+
+const constructLayerToDna = async (_dna = [], _layers = []) => {
+  let mappedDnaToLayers = _layers.map(async (layer, index) => {
     let selectedElement = layer.elements.find(
       (e) => e.id == cleanDna(_dna[index])
     );
+    let nbFrames = await getNumberOfFrames(selectedElement.path);
     return {
       name: layer.name,
       blendMode: layer.blendMode,
       opacity: layer.opacity,
       selectedElement: selectedElement,
       position: layer.position,
+      nbFrames: nbFrames,
     };
   });
   return mappedDnaToLayers;
@@ -314,34 +366,73 @@ const startCreating = async () => {
     ) {
       let newDna = createDna(layers);
       if (isDnaUnique(dnaList, newDna)) {
-        let results = constructLayerToDna(newDna, layers);
-        let loadedElements = [];
+        const encoder = new GIFEncoder(format.width, format.height);
+        encoder.setDelay(format.frame_delay);
 
-        results.forEach((layer) => {
-          loadedElements.push(loadLayerImg(layer));
+        let results = await constructLayerToDna(newDna, layers);
+        let frames = [];
+        const res = await Promise.all(results);
+
+        // compute max number of frames
+        let maxNbFrames = 0;
+        res.forEach((layer) => {
+          if (layer.nbFrames > maxNbFrames) {
+            maxNbFrames = layer.nbFrames;
+          }
         });
+        debugLogs ? console.log("Max number of Frames: ", maxNbFrames) : null;
+        if (maxNbFrames > 1) {
+          encoder.start();
+        }
 
-        await Promise.all(loadedElements).then((renderObjectArray) => {
+        for (let idx = 0; idx < maxNbFrames; idx++) {
+          let loadedElements = [];
+          res.forEach((layer) => {
+            loadedElements.push(loadLayerFrame(layer, idx));
+          });
+
+          const renderObjectArray = await Promise.all(loadedElements).catch((err) => { console.log("Error"); throw (err); });
           debugLogs ? console.log("Clearing casvas") : null;
+
           ctx.clearRect(0, 0, format.width, format.height);
           if (background.generate) {
             drawBackground();
           }
+
           renderObjectArray.forEach((renderObject) => {
             drawElement(renderObject);
           });
+
           debugLogs
             ? console.log("Editions left to create: ", abstractedIndexes)
             : null;
+          if (maxNbFrames !== 1) {
+            encoder.addFrame(ctx);
+          }
+        };
+
+
+        if (maxNbFrames == 1) {
+          console.log("Save image");
           saveImage(abstractedIndexes[0]);
-          addMetadata(newDna, abstractedIndexes[0]);
-          saveMetaDataSingleFile(abstractedIndexes[0]);
-          console.log(
-            `Created edition: ${abstractedIndexes[0]}, with DNA: ${sha1(
-              newDna.join("")
-            )}`
-          );
-        });
+        } else {
+          encoder.finish();
+          const buffer = encoder.out.getData();
+          let gif_name = `${buildDir}/images/${abstractedIndexes[0]}.gif`;
+          fs.writeFile(gif_name, buffer, error => {
+            if (error !== null) {
+              console.log("Failed to write:", error);
+            }
+          });
+        }
+        let isGif = maxNbFrames !== 1;
+        addMetadata(newDna, abstractedIndexes[0], isGif);
+        saveMetaDataSingleFile(abstractedIndexes[0]);
+        console.log(
+          `Created edition: ${abstractedIndexes[0]}, with DNA: ${sha1(
+            newDna.join("")
+          )}`
+        );
         dnaList.push(newDna);
         editionCount++;
         abstractedIndexes.shift();
