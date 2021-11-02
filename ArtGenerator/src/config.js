@@ -14,7 +14,7 @@ const symbol = "ROLP";              //we can still discuss this
 
 //Define how much % you want from second market sales 1000 = 10%
 const seller_fee_basis_points = 500;            // this is 5%, we can still discuss this
-const external_url = "https://rollingplantes.art";        // I will purchase this here at deployment: https://uk.godaddy.com/domainsearch/find?checkAvail=1&domainToCheck=rollingplantes.art
+const external_url = "https://rollingplanets.art";        // I will purchase this here at deployment: https://uk.godaddy.com/domainsearch/find?checkAvail=1&domainToCheck=rollingplantes.art
 
 const layerConfigurations = [
   {
@@ -42,6 +42,7 @@ const debugLogs = false;
 const format = {
   width: 128,
   height: 128,
+  frame_delay: 100, // GIF frame delay
 };
 
 // const quarterNr = {
@@ -57,7 +58,7 @@ const background = {
 };
 
 const extraMetadata = {
-  creator = "The Big Bang"
+  creator: "The Big Bang",
 };
 
 const rarityDelimiter = "#";
