@@ -5,13 +5,8 @@ const isLocal = typeof process.pkg === "undefined";
 const basePath = isLocal ? process.cwd() : path.dirname(process.execPath);
 const fs = require("fs");
 const sha1 = require(path.join(basePath, "/node_modules/sha1"));
-const { createCanvas, loadImage, Image } = require(path.join(
-  basePath,
-  "/node_modules/canvas"
-));
 const buildDir = path.join(basePath, "/build");
 const layersDir = path.join(basePath, "/layers");
-console.log(path.join(basePath, "/src/config.js"));
 const {
   format,
   baseUri,
@@ -38,13 +33,6 @@ const {
 } = require(path.join(basePath, "/src/config.js"));
 
 const { generateMedia } = require(path.join(basePath, "src/generator/v1.js"));;
-
-const { count } = require("console");
-const { encode } = require("punycode");
-
-const canvas = createCanvas(format.width, format.height);
-const ctx = canvas.getContext("2d");
-
 
 var metadataList = [];
 var attributesList = [];
@@ -259,6 +247,9 @@ const startCreating = async () => {
     ) {
       let newDna = createDna(layers);
       if (isDnaUnique(dnaList, newDna)) {
+        debugLogs
+            ? console.log("Editions left to create: ", abstractedIndexes)
+            : null;
 
         let resp = await generateMedia(newDna, abstractedIndexes, layers);
         let isGif = resp.isGif;

@@ -170,7 +170,6 @@ const generateMedia = async (newDna, abstractedIndexes, layers) => {
         });
 
         const renderObjectArray = await Promise.all(loadedElements).catch((err) => { console.log("Error"); throw (err); });
-        debugLogs ? console.log("Clearing casvas") : null;
 
         ctx.clearRect(0, 0, format.width, format.height);
         if (background.generate) {
@@ -182,9 +181,6 @@ const generateMedia = async (newDna, abstractedIndexes, layers) => {
             addAttributes(renderObject, attributesList);
         });
 
-        debugLogs
-            ? console.log("Editions left to create: ", abstractedIndexes)
-            : null;
         if (maxNbFrames !== 1) {
             encoder.addFrame(ctx);
         }
@@ -192,7 +188,6 @@ const generateMedia = async (newDna, abstractedIndexes, layers) => {
 
 
     if (maxNbFrames == 1) {
-        console.log("Save image");
         saveImage(abstractedIndexes[0]);
     } else {
         encoder.finish();
