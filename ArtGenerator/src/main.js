@@ -36,8 +36,8 @@ const {
   debugLogs,
   extraMetadata,
 } = require(path.join(basePath, "/src/config.js"));
-const gifFrames = require("gif-frames");
-const GIFEncoder = require("gif-encoder-2");
+
+const { generateMedia } = require(path.join(basePath, "src/generator/v1.js"));;
 
 const { count } = require("console");
 const { encode } = require("punycode");
@@ -68,11 +68,6 @@ const getRarityWeight = (_str) => {
     nameWithoutWeight = 0;
   }
   return nameWithoutWeight;
-};
-
-const cleanDna = (_str) => {
-  var dna = Number(_str.split(":").shift());
-  return dna;
 };
 
 const cleanName = (_str) => {
@@ -149,25 +144,8 @@ const layersSetup = (layersOrder) => {
   return layers;
 };
 
-const saveImage = (_editionCount) => {
-  fs.writeFileSync(
-    `${buildDir}/images/${_editionCount}.png`,
-    canvas.toBuffer("image/png")
-  );
-};
 
-const genColor = () => {
-  let hue = Math.floor(Math.random() * 360);
-  let pastel = `hsl(${hue}, 100%, ${background.brightness})`;
-  return pastel;
-};
-
-const drawBackground = () => {
-  ctx.fillStyle = genColor();
-  ctx.fillRect(0, 0, format.width, format.height);
-};
-
-const addMetadata = (_dna, _edition, isGif = false) => {
+const addMetadata = (_dna, _edition, _attributesList, isGif = false) => {
   let dateTime = Date.now();
   let tempMetadata = {
 
@@ -187,98 +165,13 @@ const addMetadata = (_dna, _edition, isGif = false) => {
 
     edition: _edition,
     ...extraMetadata,
-    attributes: attributesList,
+    attributes: _attributesList,
     collection: collection,
     properties: properties,
   };
   metadataList.push(tempMetadata);
-  attributesList = [];
 };
 
-const addAttributes = (_element) => {
-  let selectedElement = _element.layer.selectedElement;
-  attributesList.push({
-    trait_type: _element.layer.name,
-    value: selectedElement.name,
-  });
-};
-
-function stream2buffer(stream) {
-
-  return new Promise((resolve, reject) => {
-
-    const _buf = [];
-
-    stream.on("data", (chunk) => _buf.push(chunk));
-    stream.on("end", () => resolve(Buffer.concat(_buf)));
-    stream.on("error", (err) => reject(err));
-
-  });
-}
-
-const loadLayerFrame = async (_layer, idx) => {
-  return new Promise(async (resolve) => {
-    let _filename = `${_layer.selectedElement.path}`
-    if (!isGif(_filename)) {
-      const image = await loadImage(`${_layer.selectedElement.path}`);
-      resolve({ layer: _layer, loadedImage: image });
-    } else {
-      idx = idx % _layer.nbFrames;
-      let frameData = await gifFrames({ url: _filename, frames: idx, outputType: 'png' });
-      let _stream = frameData[0].getImage();
-      const image = new Image;
-      image.src = await stream2buffer(_stream);
-      resolve({ layer: _layer, loadedImage: image });
-    }
-  });
-};
-
-const loadLayerImg = async (_layer) => {
-  return new Promise(async (resolve) => {
-    const image = await loadImage(`${_layer.selectedElement.path}`);
-    resolve({ layer: _layer, loadedImage: image });
-  });
-};
-
-const drawElement = (_renderObject) => {
-  ctx.globalAlpha = _renderObject.layer.opacity;
-  ctx.globalCompositeOperation = _renderObject.layer.blendMode;
-  ctx.drawImage(_renderObject.loadedImage, _renderObject.layer.position.x, _renderObject.layer.position.y);
-
-  addAttributes(_renderObject);
-};
-
-const isGif = (_filename) => {
-  let extension = _filename.replace(/^.*\./, "");
-  return extension === "gif";
-}
-
-const getNumberOfFrames = async (_filename) => {
-  if (!isGif(_filename)) {
-    return 1;
-  }
-  // we have a gif so we need to count number of frames
-  let results = await gifFrames({ url: _filename, frames: 'all' });
-  return results.length;
-}
-
-const constructLayerToDna = async (_dna = [], _layers = []) => {
-  let mappedDnaToLayers = _layers.map(async (layer, index) => {
-    let selectedElement = layer.elements.find(
-      (e) => e.id == cleanDna(_dna[index])
-    );
-    let nbFrames = await getNumberOfFrames(selectedElement.path);
-    return {
-      name: layer.name,
-      blendMode: layer.blendMode,
-      opacity: layer.opacity,
-      selectedElement: selectedElement,
-      position: layer.position,
-      nbFrames: nbFrames,
-    };
-  });
-  return mappedDnaToLayers;
-};
 
 const isDnaUnique = (_DnaList = [], _dna = []) => {
   let foundDna = _DnaList.find((i) => i.join("") === _dna.join(""));
@@ -366,67 +259,12 @@ const startCreating = async () => {
     ) {
       let newDna = createDna(layers);
       if (isDnaUnique(dnaList, newDna)) {
-        const encoder = new GIFEncoder(format.width, format.height);
-        encoder.setDelay(format.frame_delay);
 
-        let results = await constructLayerToDna(newDna, layers);
-        let frames = [];
-        const res = await Promise.all(results);
+        let resp = await generateMedia(newDna, abstractedIndexes, layers);
+        let isGif = resp.isGif;
+        let attributeList = resp.attributeList;
 
-        // compute max number of frames
-        let maxNbFrames = 0;
-        res.forEach((layer) => {
-          if (layer.nbFrames > maxNbFrames) {
-            maxNbFrames = layer.nbFrames;
-          }
-        });
-        debugLogs ? console.log("Max number of Frames: ", maxNbFrames) : null;
-        if (maxNbFrames > 1) {
-          encoder.start();
-        }
-
-        for (let idx = 0; idx < maxNbFrames; idx++) {
-          let loadedElements = [];
-          res.forEach((layer) => {
-            loadedElements.push(loadLayerFrame(layer, idx));
-          });
-
-          const renderObjectArray = await Promise.all(loadedElements).catch((err) => { console.log("Error"); throw (err); });
-          debugLogs ? console.log("Clearing casvas") : null;
-
-          ctx.clearRect(0, 0, format.width, format.height);
-          if (background.generate) {
-            drawBackground();
-          }
-
-          renderObjectArray.forEach((renderObject) => {
-            drawElement(renderObject);
-          });
-
-          debugLogs
-            ? console.log("Editions left to create: ", abstractedIndexes)
-            : null;
-          if (maxNbFrames !== 1) {
-            encoder.addFrame(ctx);
-          }
-        };
-
-
-        if (maxNbFrames == 1) {
-          console.log("Save image");
-          saveImage(abstractedIndexes[0]);
-        } else {
-          encoder.finish();
-          const buffer = encoder.out.getData();
-          let gif_name = `${buildDir}/images/${abstractedIndexes[0]}.gif`;
-          fs.writeFile(gif_name, buffer, error => {
-            if (error !== null) {
-              console.log("Failed to write:", error);
-            }
-          });
-        }
-        let isGif = maxNbFrames !== 1;
-        addMetadata(newDna, abstractedIndexes[0], isGif);
+        addMetadata(newDna, abstractedIndexes[0], attributeList, isGif);
         saveMetaDataSingleFile(abstractedIndexes[0]);
         console.log(
           `Created edition: ${abstractedIndexes[0]}, with DNA: ${sha1(
